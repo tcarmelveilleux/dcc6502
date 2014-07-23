@@ -2,7 +2,7 @@
 /* DCC6502.c -> Main module of:                               */
 /* Disassembler and Cycle Counter for the 6502 microprocessor */
 /*                                                            */
-/* (C) 1998-2003 Tennessee Carmel-Veilleux(veilleux@ameth.org)*/
+/* (C) 1998-2014 Tennessee Carmel-Veilleux(veilleux@ameth.org)*/
 /* This code is offered as FREEware. You cannot modify nor    */
 /* distribute modified versions of this software without      */
 /* prior written consent of the author(s). The author shall   */
@@ -584,7 +584,7 @@ void disassemble(char *output) {
 }
 
 void version(void) {
-    fprintf(stderr, "DCC6502 %s (C)1998-2003 Tennessee Carmel-Veilleux\n", VERSION_INFO);
+    fprintf(stderr, "DCC6502 %s (C)1998-2014 Tennessee Carmel-Veilleux\n", VERSION_INFO);
     fprintf(stderr, "This is free software. To see the LICENSE, use the -v parameter\n");
 }
 
@@ -604,7 +604,7 @@ void usage(void) {
 }
 
 void license(void) {
-    fprintf(stderr, "(C) 1998-2003 Tennessee Carmel-Veilleux(veilleux@ameth.org)\n");
+    fprintf(stderr, "(C) 1998-2014 Tennessee Carmel-Veilleux(veilleux@ameth.org)\n");
     fprintf(stderr, "This code is offered as FREEware. You cannot modify nor\n");
     fprintf(stderr, "distribute modified versions of this software without\n");
     fprintf(stderr, "prior written consent of the author(s). The author shall\n");
