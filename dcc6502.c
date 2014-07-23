@@ -2,19 +2,18 @@
 /* DCC6502.c -> Main module of:                               */
 /* Disassembler and Cycle Counter for the 6502 microprocessor */
 /*                                                            */
-/* (C) 1998-2001 Tennessee Carmel-Veilleux(veilleux@ameth.org)*/
+/* (C) 1998-2003 Tennessee Carmel-Veilleux(veilleux@ameth.org)*/
 /* This code is offered as FREEware. You cannot modify nor    */
 /* distribute modified versions of this software without      */
 /* prior written consent of the author(s). The author shall   */
 /* NOT be responsible for ANY damage purely physical,         */
-/* emotional, material and magical to either you or anyone    */
-/* in the universe.                                           */
+/* emotional, material and magical to either you or anyone.   */
 /**************************************************************/
 
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_INFO "v1.4"
+#define VERSION_INFO "v1.5"
 #define NUMBER_OPCODES 151
 
 /* The 6502's 13 addressing modes */
@@ -586,7 +585,7 @@ void disassemble(char *output) {
 }
 
 void version(void) {
- fprintf(stderr,"DCC6502 %s (C)1998-2001 Tennessee Carmel-Veilleux\n",VERSION_INFO);
+ fprintf(stderr,"DCC6502 %s (C)1998-2003 Tennessee Carmel-Veilleux\n",VERSION_INFO);
  fprintf(stderr,"This is free software. To see the LICENSE, use the -v parameter\n");
 }
 
@@ -606,13 +605,12 @@ void usage(void) {
 }
 
 void license(void) {
- fprintf(stderr,"(C) 1998-2001 Tennessee Carmel-Veilleux(veilleux@ameth.org)\n");
+ fprintf(stderr,"(C) 1998-2003 Tennessee Carmel-Veilleux(veilleux@ameth.org)\n");
  fprintf(stderr,"This code is offered as FREEware. You cannot modify nor\n");
  fprintf(stderr,"distribute modified versions of this software without\n");
  fprintf(stderr,"prior written consent of the author(s). The author shall\n");
  fprintf(stderr,"NOT be responsible for ANY damage purely physical,\n");
- fprintf(stderr,"emotional, material and magical to either you or anyone\n");
- fprintf(stderr,"in the universe.\n");
+ fprintf(stderr,"emotional, material and magical to either you or anyone.\n");
 }
 
 unsigned short hex2int (char *str, unsigned short dfl) {
@@ -639,7 +637,7 @@ unsigned short hex2int (char *str, unsigned short dfl) {
 
 void set_org(char *str) {
  if (strlen(str) < 6) {
-  fprintf(stderr,"WARNING -> %s is not a valid ORG switch, deafaulting to $8000\n");
+  fprintf(stderr,"WARNING -> %s is not a valid ORG switch, defaulting to $8000\n",str);
   org = 0x8000;
   return;
  }
@@ -649,8 +647,8 @@ void set_org(char *str) {
 
 void set_max(char *str) {
  if (strlen(str) != 6) {
-  fprintf(stderr,"WARNING -> %s is not a valid MAX switch, defaulting to $%04X\n",0xffff);
   max = 0xFFFF-org;
+  fprintf(stderr,"WARNING -> %s is not a valid MAX switch, defaulting to $%04X\n",str,max);
   return;
  }
  
@@ -726,7 +724,7 @@ int main(int argc, char *argv[]) {
 
  emit_header(filename,i,org);
  PC = 0;
- while(PC+org < 65535 && PC <= max) {
+ while(PC+org < 65535 && PC <= max && PC < i) {
   disassemble(tmpstring);
   fprintf(stdout,"%s\n",tmpstring);
   PC++;
