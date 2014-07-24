@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <errno.h>
 
 #define VERSION_INFO "v1.6"
 #define NUMBER_OPCODES 151
@@ -47,6 +48,11 @@
 #define ININD 10 /* Indirect indexed (with Y) */
 #define RELAT 11 /* Relative */
 #define ACCUM 12 /* Accumulator */
+
+/** Some compilers don't have EOK in errno.h */
+#ifndef EOK
+#define EOK 0
+#endif
 
 typedef struct OPcode {
     uint8_t number; /* Number of the opcode */
@@ -278,7 +284,6 @@ OPcode opcode_table[NUMBER_OPCODES] = {
     {0x98, 55, IMPLI, 2, 0} /* TYA */
 };
 
-// FIXME: use stdint types
 // FIXME: use g_ nomenclature for globals
 uint16_t org; /* Origin of addresses */
 int hex_output = 0; /* 1 if hex output is desired at beginning of line */
@@ -366,7 +371,6 @@ void append_nes(char *input, uint16_t arg) {
 #define LOW_PART(val) ((val) & 0xFFu)
 #define LOAD_WORD(buffer, current_pc) ((uint16_t)buffer[(current_pc) + 1] | (((uint16_t)buffer[(current_pc) + 2]) << 8))
 
-// FIXME: Refactor code to reduce line duplication and make more readable 
 /* This function disassembles the opcode at the PC and outputs it in *output */
 void disassemble(char *output) {
     char opcode_repr[256], hex_dump[256];
@@ -594,65 +598,56 @@ void usage_helper(char *str) {
 }
 
 // FIXME: add command line sample
+// FIXME: Make these more sane and add option for decimal
 void usage(void) {
     usage_helper("-?      -> Show this help message");
-    usage_helper("-oXXXX  -> Set the origin (ORG) [dfl: $8000]");
-    usage_helper("-h      -> Get hex info about disassembly");
-    usage_helper("-mXXXX  -> Only disassemble the first XXXX bytes");
-    usage_helper("-n      -> Enable NES mode");
+    usage_helper("-oXXXX  -> Set the origin (ORG), where XXXX is hexadecimal [default: 8000]");
+    usage_helper("-h      -> Enable hex dump within disassembly");
+    usage_helper("-mXXXX  -> Only disassemble the first XXXX bytes, where XXXX is hexadecimal");
+    usage_helper("-mXXXX  -> Only disassemble the first XXXX bytes, where XXXX is hexadecimal");
+    usage_helper("-n      -> Enable NES register annotations");
     usage_helper("-v      -> Get only version information");
-    usage_helper("-c      -> Get cycle counting info");
+    usage_helper("-c      -> Enable cycle counting annotations");
     fprintf(stderr, "\n");
 }
 
 // FIXME: DE-KLUDGIFY THIS :D
 uint16_t hex2int (char *str, uint16_t dfl) {
-    char HEX_digits[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-    int i, j;
-    char k = 0;
-    char c, shift;
-    uint16_t tmp = 0;
+    uint32_t tmp = 0;
 
-    shift = 0;
-    for (i = 5; i >= 2; i--) {
-        if (!isxdigit(str[i])) {
-            tmp = dfl;
-            break;
-        }
-        c = toupper(str[i]);
-        for (j = 0; j < 16; j++) {
-            if (c == HEX_digits[j]) {
-                k = j;
-            }
-        }
-        tmp |= ((k & 0xf) << shift);
-        shift += 4;
+    errno = EOK;
+    tmp = strtoul(str, NULL, 16);
+    /* In case of conversion error, take default value */
+    if (EOK != errno) {
+        fprintf(stderr, "WARNING -> error converting %s to a numerical value.", str);
+        return dfl;
+    } else {
+        return (uint16_t)(tmp & 0xFFFFu);
     }
-    return tmp;
 }
 
 void set_org(char *str) {
-    if (strlen(str) < 6) {
+    if (strlen(str) < 3) {
         fprintf(stderr, "WARNING -> %s is not a valid ORG switch, defaulting to $8000\n", str);
         org = 0x8000;
         return;
     }
 
-    org = hex2int(str, 0x8000);
+    org = hex2int(&str[2], 0x8000u);
 }
 
 void set_max(char *str) {
-    if (strlen(str) != 6) {
+    if (strlen(str) < 3) {
         max = 0xFFFF-org;
         fprintf(stderr, "WARNING -> %s is not a valid MAX switch, defaulting to $%04X\n", str, max);
         return;
     }
 
-    max = hex2int(str, 0xFFFF);
+    max = hex2int(&str[2], 0xFFFFu);
 }
 
 int main(int argc, char *argv[]) {
-    int i = 0;
+    int idx = 0;
     char tmpstring[512];
     char filename[512];
 
@@ -667,14 +662,14 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc > 2) {
-        for (i = 1; i < argc - 1; i++) {
-            if (argv[i][0] != '-') {
+        for (idx = 1; idx < argc - 1; idx++) {
+            if (argv[idx][0] != '-') {
                 version();
                 usage();
-                fprintf(stderr, "Unrecognized switch: %s\n", argv[i]);
+                fprintf(stderr, "Unrecognized switch: %s\n", argv[idx]);
                 exit(1);
             }
-            switch (argv[i][1]) {
+            switch (argv[idx][1]) {
                 case '?':
                     version();
                     usage();
@@ -694,15 +689,15 @@ int main(int argc, char *argv[]) {
                     exit(0);
                     break;
                 case 'o':
-                    set_org(argv[i]);
+                    set_org(argv[idx]);
                     break;
                 case 'm':
-                    set_max(argv[i]);
+                    set_max(argv[idx]);
                     break;
                 default:
                     version();
                     usage();
-                    fprintf(stderr, "Unrecognized switch: %s\n", argv[i]);
+                    fprintf(stderr, "Unrecognized switch: %s\n", argv[idx]);
                     exit(1);
             }
         }
@@ -740,17 +735,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    i = 0;
-    while(!feof(f) && ((i + org) < 65535)) {
-        fread(&buffer[i], 1, 1, f);
-        i++;
+    idx = 0;
+    while(!feof(f) && ((idx + org) < 65535)) {
+        fread(&buffer[idx], 1, 1, f);
+        idx++;
     }
 
     fclose(f);
 
-    emit_header(filename, i, org);
+    emit_header(filename, idx, org);
     PC = 0;
-    while(((PC + org) < 65535) && (PC <= max) && (PC < i)) {
+    while(((PC + org) < 65535) && (PC <= max) && (PC < idx)) {
         disassemble(tmpstring);
         fprintf(stdout, "%s\n", tmpstring);
         PC++;
