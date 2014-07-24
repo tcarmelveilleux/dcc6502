@@ -43,8 +43,8 @@
 #define ABSIY 6 /* Absolute indexed with Y */
 #define ZEPIX 7 /* Zero page indexed with X */
 #define ZEPIY 8 /* Zero page indexed with Y */
-#define INDIN 9 /* Indexed indirect (with x) */
-#define ININD 10 /* Indirect indexed (with y) */
+#define INDIN 9 /* Indexed indirect (with X) */
+#define ININD 10 /* Indirect indexed (with Y) */
 #define RELAT 11 /* Relative */
 #define ACCUM 12 /* Accumulator */
 
@@ -304,7 +304,7 @@ void emit_header(char *filename, int fsize, uint16_t org) {
 }
 
 /* This function appends cycle counting to the comment block */
-void append_cycle(char *input, uint8_t entry, uint16_t arg, uint16_t cur_PC) {
+char *append_cycle(char *input, uint8_t entry) {
     char tmpstr[256];
     int cycles = opcode_table[entry].cycles;
 
@@ -316,6 +316,7 @@ void append_cycle(char *input, uint8_t entry, uint16_t arg, uint16_t cur_PC) {
     }
 
     strcat(input, tmpstr);
+    return (input + strlen(input));
 }
 
 void add_nes_str(char *instr, char *instr2) {
@@ -368,14 +369,13 @@ void append_nes(char *input, uint16_t arg) {
 // FIXME: Refactor code to reduce line duplication and make more readable 
 /* This function disassembles the opcode at the PC and outputs it in *output */
 void disassemble(char *output) {
-    uint8_t tmp_byte1, opcode;
     char tmpstr[256], opcode_repr[256], hex_dump[256];
-    word tmp_word;
     int i;
     int entry = 0;
     int found = 0;
-    int len = 0;
-    unsigned int current_addr = org + PC;
+    uint8_t tmp_byte1, opcode;
+    word tmp_word = 0;
+    uint16_t current_addr = org + PC;
 
     opcode = buffer[current_addr - org];
 
@@ -390,12 +390,11 @@ void disassemble(char *output) {
         sprintf(opcode_repr, ".byte $%02x", opcode);
         if (hex_output) {
             sprintf(hex_dump, "$%04X> %02X:", current_addr, opcode);
-            len = sprintf(output, "%-16s%-16s; INVALID OPCODE !!!\n", hex_dump, opcode_repr);
+            sprintf(output, "%-16s%-16s; INVALID OPCODE !!!\n", hex_dump, opcode_repr);
         } else {
             sprintf(hex_dump, "$%04X", current_addr);
-            len = sprintf(output, "%-8s%-16s; INVALID OPCODE !!!\n", hex_dump, opcode_repr);
+            sprintf(output, "%-8s%-16s; INVALID OPCODE !!!\n", hex_dump, opcode_repr);
         }
-        output += len;
     } else {
         switch (opcode_table[entry].addressing) {
             case IMMED:
@@ -407,38 +406,24 @@ void disassemble(char *output) {
                 } else {
                     sprintf(hex_dump, "$%04X", current_addr);
                 }
-                len = sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
-                output += len;
+                sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(output, entry, current_addr, current_addr);
-                }
                 PC++;
                 break;
-
             case ABSOL:
                 /* Get address */
                 tmp_word = LOAD_WORD(buffer, PC);
 
-                if (hex_output)
-                    sprintf(tmpstr, "$%04X> %02X %02X%02X:\t%s $%02X%02X\t;", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word), name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                else
-                    sprintf(tmpstr, "$%04X\t%s $%02X%02X\t;", current_addr, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, tmp_word, current_addr);
+                sprintf(opcode_repr, "%s $%02X%02X", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
+                if (hex_output) {
+                    sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
+                } else {
+                    sprintf(hex_dump, "$%04X", current_addr);
                 }
+                sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
 
-                /* Add NES port info if necessary */
-                if (nes_mode) { 
-                    append_nes(tmpstr, tmp_word);
-                }
-                strncpy(output, tmpstr, 254);
                 PC += 2;
                 break;
-
             case ZEROP:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get low byte of address */
@@ -448,15 +433,8 @@ void disassemble(char *output) {
                 } else {
                     sprintf(tmpstr, "$%04X\t%s $%02X\t\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
                 }
-                
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC-1, org+PC-1);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case IMPLI:
                 if (hex_output) {
                     sprintf(tmpstr, "$%04X> %02X:\t%s\t\t;", org+PC, opcode, name_table[opcode_table[entry].name]);
@@ -464,14 +442,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s\t\t;", org+PC, name_table[opcode_table[entry].name]);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC, org+PC);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case INDIA:
                 PC++;
                 PC++;
@@ -483,14 +455,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s ($%02X%02X)\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, tmp_word, org+PC-2);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ABSIX:
                 PC++;
                 PC++;
@@ -502,19 +468,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s $%02X%02X,X\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, tmp_word, org+PC-2);
-                }
-
-                /* Add NES port info if necessary */
-                if (nes_mode) { 
-                    append_nes(tmpstr, tmp_word);
-                }
-                
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ABSIY:
                 PC++;
                 PC++;
@@ -526,19 +481,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s $%02X%02X,Y\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
                 }
                 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, tmp_word, org+PC-2);
-                }
-
-                /* Add NES port info if necessary */
-                if (nes_mode) {
-                    append_nes(tmpstr, tmp_word);
-                }
-                
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ZEPIX:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get low byte of address */
@@ -549,14 +493,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s $%02X,X\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC-1, org+PC-1);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ZEPIY:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get low byte of address */
@@ -567,14 +505,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s $%02X,Y\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC-1, org+PC-1);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case INDIN:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get low byte of address */
@@ -585,14 +517,8 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s ($%02X,X)\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC-1, org+PC-1);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ININD:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get low byte of address */
@@ -603,32 +529,21 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s ($%02X),Y\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC-1, org+PC-1);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case RELAT:
                 PC++;
                 tmp_byte1 = buffer[PC]; /* Get relative modifier */
 
+                // FIXME: Resolve undefined behavior of cast for signed relative addressing
                 if (hex_output) {
                     sprintf(tmpstr, "$%04X> %02X %02X:\t%s $%04X\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], (org+PC)+(signed char)(tmp_byte1)+1);
                 } else {
                     sprintf(tmpstr, "$%04X\t%s $%04X\t;", org+PC-1, name_table[opcode_table[entry].name], (org+PC)+(signed char)(tmp_byte1)+1);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC, org+PC);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             case ACCUM:
                 if (hex_output) {
                     sprintf(tmpstr, "$%04X> %02X:\t%s A\t\t;", org+PC, opcode, name_table[opcode_table[entry].name]);
@@ -636,15 +551,30 @@ void disassemble(char *output) {
                     sprintf(tmpstr, "$%04X\t%s A\t\t;", org+PC, name_table[opcode_table[entry].name]);
                 }
 
-                /* Add cycle count if necessary */
-                if (cycle_counting) {
-                    append_cycle(tmpstr, entry, org+PC, org+PC);
-                }
-
                 strncpy(output, tmpstr, 254);
                 break;
-
             default:
+                break;
+        }
+
+        output += strlen(output);
+
+        /* Add cycle count if necessary */
+        if (cycle_counting) {
+            output = append_cycle(output, entry);
+        }
+
+        /* Add NES port info if necessary */
+        switch (opcode_table[entry].addressing) {
+            case ABSOL:
+            case ABSIX:
+            case ABSIY:
+                if (nes_mode) {
+                    append_nes(output, tmp_word);
+                }
+                break;
+            default:
+                /* Other addressing modes: not enough info to add NES register annotation */
                 break;
         }
     }
