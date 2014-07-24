@@ -369,8 +369,9 @@ void append_nes(char *input, uint16_t arg) {
 // FIXME: Refactor code to reduce line duplication and make more readable 
 /* This function disassembles the opcode at the PC and outputs it in *output */
 void disassemble(char *output) {
-    char tmpstr[256], opcode_repr[256], hex_dump[256];
+    char opcode_repr[256], hex_dump[256];
     int i;
+    int len = 0;
     int entry = 0;
     int found = 0;
     uint8_t tmp_byte1, opcode;
@@ -378,14 +379,20 @@ void disassemble(char *output) {
     uint16_t current_addr = org + PC;
 
     opcode = buffer[current_addr - org];
+    opcode_repr[0] = '\0';
+    hex_dump[0] = '\0';
 
+    // Linear search for opcode
     for (i = 0; i < NUMBER_OPCODES; i++) {
         if (opcode == opcode_table[i].number) {
-            found = 1; /* Found the opcode */
-            entry = i; /* Note the entry number in the table */
+            /* Found the opcode, record its table index */
+            found = 1;
+            entry = i;
         }
     }
 
+    // TODO: Normalize %02x versus %02X
+    // For opcode not found, terminate early
     if (!found) {
         sprintf(opcode_repr, ".byte $%02x", opcode);
         if (hex_output) {
@@ -395,188 +402,184 @@ void disassemble(char *output) {
             sprintf(hex_dump, "$%04X", current_addr);
             sprintf(output, "%-8s%-16s; INVALID OPCODE !!!\n", hex_dump, opcode_repr);
         }
-    } else {
-        switch (opcode_table[entry].addressing) {
-            case IMMED:
-                tmp_byte1 = buffer[PC + 1]; /* Get immediate value */
+        return;
+    }
 
-                sprintf(opcode_repr, "%s #$%02x", name_table[opcode_table[entry].name], tmp_byte1);
-                if (hex_output) {
-                    sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
-                } else {
-                    sprintf(hex_dump, "$%04X", current_addr);
-                }
-                sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
+    // Opcode found in table: disassemble properly according to addressing mode
 
-                PC++;
-                break;
-            case ABSOL:
-                /* Get address */
-                tmp_word = LOAD_WORD(buffer, PC);
+    // Set hex dump to default single address format. Will be overwritten
+    // by more complex output in case of hex dump mode enabled
+    sprintf(hex_dump, "$%04X", current_addr);
 
-                sprintf(opcode_repr, "%s $%02X%02X", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                if (hex_output) {
-                    sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
-                } else {
-                    sprintf(hex_dump, "$%04X", current_addr);
-                }
-                sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
+    switch (opcode_table[entry].addressing) {
+        case IMMED:
+            /* Get immediate value operand */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-                PC += 2;
-                break;
-            case ZEROP:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get low byte of address */
+            sprintf(opcode_repr, "%s #$%02x", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s $%02X\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], tmp_byte1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%02X\t\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
-                }
-                strncpy(output, tmpstr, 254);
-                break;
-            case IMPLI:
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X:\t%s\t\t;", org+PC, opcode, name_table[opcode_table[entry].name]);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s\t\t;", org+PC, name_table[opcode_table[entry].name]);
-                }
+            break;
+        case ABSOL:
+            /* Get absolute address operand */
+            tmp_word = LOAD_WORD(buffer, PC);
+            PC += 2;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case INDIA:
-                PC++;
-                PC++;
-                tmp_word = LOAD_WORD(buffer, PC-2);
+            sprintf(opcode_repr, "%s $%02X%02X", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X%02X:\t%s ($%02X%02X)\t;", org+PC-2, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word), name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s ($%02X%02X)\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                }
+            break;
+        case ZEROP:
+            /* Get zero page address */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case ABSIX:
-                PC++;
-                PC++;
-                tmp_word = LOAD_WORD(buffer, PC-2);
+            sprintf(opcode_repr, "%s $%02X", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X%02X:\t%s $%02X%02X,X\t;", org+PC-2, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word), name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%02X%02X,X\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                }
+            break;
+        case IMPLI:
+            sprintf(opcode_repr, "%s", name_table[opcode_table[entry].name]);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X:", current_addr, opcode);
+            }
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case ABSIY:
-                PC++;
-                PC++;
-                tmp_word = LOAD_WORD(buffer, PC-2);
+            break;
+        case INDIA:
+            /* Get indirection address */
+            tmp_word = LOAD_WORD(buffer, PC);
+            PC += 2;
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X%02X:\t%s $%02X%02X,Y\t;", org+PC-2, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word), name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%02X%02X,Y\t;", org+PC-2, name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
-                }
-                
-                strncpy(output, tmpstr, 254);
-                break;
-            case ZEPIX:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get low byte of address */
+            sprintf(opcode_repr, "%s ($%02X%02X)", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s $%02X,X\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], tmp_byte1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%02X,X\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
-                }
+            break;
+        case ABSIX:
+            /* Get base address */
+            tmp_word = LOAD_WORD(buffer, PC);
+            PC += 2;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case ZEPIY:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get low byte of address */
+            sprintf(opcode_repr, "%s $%02X%02X,X", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s $%02X,Y\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], tmp_byte1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%02X,Y\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
-                }
+            break;
+        case ABSIY:
+            /* Get baser address */
+            tmp_word = LOAD_WORD(buffer, PC);
+            PC += 2;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case INDIN:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get low byte of address */
+            sprintf(opcode_repr, "%s $%02X%02X,Y", name_table[opcode_table[entry].name], HIGH_PART(tmp_word), LOW_PART(tmp_word));
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X%02X:", current_addr, opcode, LOW_PART(tmp_word), HIGH_PART(tmp_word));
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s ($%02X,X)\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], tmp_byte1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s ($%02X,X)\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
-                }
+            break;
+        case ZEPIX:
+            /* Get zero-page base address */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case ININD:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get low byte of address */
+            sprintf(opcode_repr, "%s $%02X,X", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s ($%02X),Y\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], tmp_byte1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s ($%02X),Y\t;", org+PC-1, name_table[opcode_table[entry].name], tmp_byte1);
-                }
+            break;
+        case ZEPIY:
+            /* Get zero-page base address */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case RELAT:
-                PC++;
-                tmp_byte1 = buffer[PC]; /* Get relative modifier */
+            sprintf(opcode_repr, "%s $%02X,Y", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-                // FIXME: Resolve undefined behavior of cast for signed relative addressing
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X %02X:\t%s $%04X\t\t;", org+PC-1, opcode, tmp_byte1, name_table[opcode_table[entry].name], (org+PC)+(signed char)(tmp_byte1)+1);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s $%04X\t;", org+PC-1, name_table[opcode_table[entry].name], (org+PC)+(signed char)(tmp_byte1)+1);
-                }
+            break;
+        case INDIN:
+            /* Get zero-page base address */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-                strncpy(output, tmpstr, 254);
-                break;
-            case ACCUM:
-                if (hex_output) {
-                    sprintf(tmpstr, "$%04X> %02X:\t%s A\t\t;", org+PC, opcode, name_table[opcode_table[entry].name]);
-                } else {
-                    sprintf(tmpstr, "$%04X\t%s A\t\t;", org+PC, name_table[opcode_table[entry].name]);
-                }
+            sprintf(opcode_repr, "%s ($%02X,X)", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-                strncpy(output, tmpstr, 254);
-                break;
-            default:
-                break;
-        }
+            break;
+        case ININD:
+            /* Get zero-page base address */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-        output += strlen(output);
+            sprintf(opcode_repr, "%s ($%02X),Y", name_table[opcode_table[entry].name], tmp_byte1);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
 
-        /* Add cycle count if necessary */
-        if (cycle_counting) {
-            output = append_cycle(output, entry);
-        }
+            break;
+        case RELAT:
+            /* Get relative modifier */
+            tmp_byte1 = buffer[PC + 1];
+            PC++;
 
-        /* Add NES port info if necessary */
-        switch (opcode_table[entry].addressing) {
-            case ABSOL:
-            case ABSIX:
-            case ABSIY:
-                if (nes_mode) {
-                    append_nes(output, tmp_word);
-                }
-                break;
-            default:
-                /* Other addressing modes: not enough info to add NES register annotation */
-                break;
-        }
+            // Compute displacement from first byte after full instruction.
+            tmp_word = current_addr + 2;
+            if (tmp_byte1 > 0x7Fu) {
+                tmp_word -= ((~tmp_byte1 & 0x7Fu) + 1);
+            } else {
+                tmp_word += tmp_byte1 & 0x7Fu;
+            }
+
+            sprintf(opcode_repr, "%s $%04X", name_table[opcode_table[entry].name], tmp_word);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, tmp_byte1);
+            }
+
+            break;
+        case ACCUM:
+            sprintf(opcode_repr, "%s A", name_table[opcode_table[entry].name]);
+            if (hex_output) {
+                sprintf(hex_dump, "$%04X> %02X:", current_addr, opcode);
+            }
+
+            break;
+        default:
+            // Will not happen since each entry in opcode_table has address mode set
+            break;
+    }
+
+    len = sprintf(output, DUMP_FORMAT, hex_dump, opcode_repr);
+    output += len;
+
+    /* Add cycle count if necessary */
+    if (cycle_counting) {
+        output = append_cycle(output, entry);
+    }
+
+    /* Add NES port info if necessary */
+    switch (opcode_table[entry].addressing) {
+        case ABSOL:
+        case ABSIX:
+        case ABSIY:
+            if (nes_mode) {
+                append_nes(output, tmp_word);
+            }
+            break;
+        default:
+            /* Other addressing modes: not enough info to add NES register annotation */
+            break;
     }
 }
 
