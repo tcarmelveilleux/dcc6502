@@ -609,7 +609,7 @@ static void version(void) {
 }
 
 static void usage(void) {
-    fprintf(stderr, "Usage: dcc6502 [options] FILENAME");
+    fprintf(stderr, "\nUsage: dcc6502 [options] FILENAME\n");
     fprintf(stderr, "  -?/-h        : Show this help message\n");
     fprintf(stderr, "  -o ORIGIN    : Set the origin (base address of disassembly) [default: 0x8000]\n");
     fprintf(stderr, "  -m NUM_BYTES : Only disassemble the first NUM_BYTES bytes\n");
@@ -620,17 +620,18 @@ static void usage(void) {
     fprintf(stderr, "\n");
 }
 
-static unsigned long str_arg_to_ulong(char *str, unsigned long default_val) {
+static int str_arg_to_ulong(char *str, unsigned long *value) {
     uint32_t tmp = 0;
+    char *endptr;
 
     errno = EOK;
-    tmp = strtoul(str, NULL, 0);
-    /* In case of conversion error, take default value */
-    if (EOK != errno) {
-        fprintf(stderr, "WARNING -> error converting %s to a numerical value.", str);
-        return default_val;
+    tmp = strtoul(str, &endptr, 0);
+    /* In case of conversion error, return error indication */
+    if ((EOK != errno) || (*endptr != '\0')) {
+        return 0;
     } else {
-        return tmp;
+        *value = tmp;
+        return 1;
     }
 }
 
@@ -645,6 +646,7 @@ static void usage_and_exit(int exit_code, const char *message) {
 
 static void parse_args(int argc, char *argv[], options_t *options) {
     int arg_idx = 1;
+    unsigned long tmp_value;
 
     options->cycle_counting = 0;
     options->hex_output = 0;
@@ -684,7 +686,10 @@ static void parse_args(int argc, char *argv[], options_t *options) {
 
                 /* Get argument and parse it */
                 arg_idx++;
-                options->org = (uint16_t)(str_arg_to_ulong(argv[arg_idx], 0x8000u) & 0xFFFFu);
+                if (!str_arg_to_ulong(argv[arg_idx], &tmp_value)) {
+                    usage_and_exit(1, "Invalid argument to -o switch");
+                }
+                options->org = (uint16_t)(tmp_value & 0xFFFFu);
                 break;
             case 'm':
                 if ((arg_idx == (argc - 1)) || (argv[arg_idx + 1][0] == '-')) {
@@ -693,7 +698,10 @@ static void parse_args(int argc, char *argv[], options_t *options) {
 
                 /* Get argument and parse it */
                 arg_idx++;
-                options->max_num_bytes = str_arg_to_ulong(argv[arg_idx], 65536u);
+                if (!str_arg_to_ulong(argv[arg_idx], &tmp_value)) {
+                    usage_and_exit(1, "Invalid argument to -m switch");
+                }
+                options->max_num_bytes = tmp_value;
                 break;
             default:
                 version();
