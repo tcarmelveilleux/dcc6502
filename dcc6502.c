@@ -32,7 +32,7 @@
 #include <errno.h>
 
 #define VERSION_INFO "v2.0"
-#define NUMBER_OPCODES 151
+#define NUMBER_OPCODES 172
 
 /* Exceptions for cycle counting */
 #define CYCLES_CROSS_PAGE_ADDS_ONE      (1 << 0)
@@ -65,7 +65,7 @@ typedef struct opcode_s {
     const char *mnemonic; /* Index in the name table */
     addressing_mode_e addressing; /* Addressing mode */
     unsigned int cycles; /* Number of cycles */
-    unsigned int cycles_exceptions; /* Mask of cycle-counting exceptions */
+    unsigned int flags; /* Mask of cycle-counting exceptions */
 } opcode_t;
 
 typedef struct options_s {
@@ -87,6 +87,7 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
     {0x79, "ADC", ABSIY, 4, CYCLES_CROSS_PAGE_ADDS_ONE},
     {0x61, "ADC", INDIN, 6, 0},
     {0x71, "ADC", ININD, 5, CYCLES_CROSS_PAGE_ADDS_ONE},
+
 
     {0x29, "AND", IMMED, 2, 0}, /* AND */
     {0x25, "AND", ZEROP, 3, 0},
@@ -111,6 +112,11 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
 
     {0x24, "BIT", ZEROP, 3, 0}, /* BIT */
     {0x2C, "BIT", ABSOL, 4, 0},
+    
+    {0x89, "BIT", IMMED, 2, 0},/* BIT (65c02) */
+    {0x34, "BIT", ZEPIX, 4, 0},/* BIT (65c02) */
+    {0x3C, "BIT", ABSIX, 4, CYCLES_CROSS_PAGE_ADDS_ONE},/* BIT (65c02) */
+
 
     {0x30, "BMI", RELAT, 2, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BMI */
 
@@ -123,6 +129,9 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
     {0x50, "BVC", RELAT, 2, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BVC */
 
     {0x70, "BVS", RELAT, 2, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BVS */
+
+    {0x80, "BRA", RELAT, 2, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BRA (65c02) */
+
 
     {0x18, "CLC", IMPLI, 2, 0}, /* CLC */
 
@@ -158,6 +167,9 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
 
     {0x88, "DEY", IMPLI, 2, 0}, /* DEY */
 
+    {0x3A, "DEA", IMPLI, 2, 0}, /* DEA (65c02) */
+
+
     {0x49, "EOR", IMMED, 2, 0}, /* EOR */
     {0x45, "EOR", ZEROP, 3, 0},
     {0x55, "EOR", ZEPIX, 4, 0},
@@ -176,8 +188,12 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
 
     {0xC8, "INY", IMPLI, 2, 0}, /* INY */
 
+    {0x1A, "INA", IMMED, 2, 0}, /* INA (65c02) */
+
     {0x4C, "JMP", ABSOL, 3, 0}, /* JMP */
     {0x6C, "JMP", INDIA, 5, 0},
+    {0x7C, "JMP", ABSIX, 6, 0},
+
 
     {0x20, "JSR", ABSOL, 6, 0}, /* JSR */
 
@@ -220,10 +236,14 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
     {0x11, "ORA", ININD, 5, CYCLES_CROSS_PAGE_ADDS_ONE},
 
     {0x48, "PHA", IMPLI, 3, 0}, /* PHA */
+    {0xDA, "PHX", IMPLI, 3, 0}, /* PHX (65c02) */
+    {0x5A, "PHY", IMPLI, 3, 0}, /* PHY (65c02) */
 
     {0x08, "PHP", IMPLI, 3, 0}, /* PHP */
-
+    
     {0x68, "PLA", IMPLI, 4, 0}, /* PLA */
+    {0xFA, "PLX", IMPLI, 4, 0}, /* PLX (65c02) */
+    {0x7A, "PLY", IMPLI, 4, 0}, /* PLY (65c02) */
 
     {0x28, "PLP", IMPLI, 4, 0}, /* PLP */
 
@@ -274,6 +294,20 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
     {0x94, "STY", ZEPIX, 4, 0},
     {0x8C, "STY", ABSOL, 4, 0},
 
+    {0x64, "STZ", ZEROP, 3, 0}, /* STZ (65c02) */
+    {0x74, "STZ", ZEPIX, 4, 0},
+    {0x9C, "STZ", ABSOL, 4, 0},
+    {0x9E, "STZ", ABSIX, 4, 0},
+
+    {0xDB, "STP", IMPLI, 3, 0}, /* STP (WDC 65c02) */
+
+    {0x14, "TRB", ZEROP, 5, 0}, /* TRB (65c02) */
+    {0x1C, "TRB", ABSOL, 6, 0}, 
+
+    {0x04, "TSB", ZEROP, 5, 0}, /* TSB (65c02) */
+    {0x0C, "TSB", ABSOL, 6, 0}, 
+
+
     {0xAA, "TAX", IMPLI, 2, 0}, /* TAX */
 
     {0xA8, "TAY", IMPLI, 2, 0}, /* TAY */
@@ -284,7 +318,10 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
 
     {0x9A, "TXS", IMPLI, 2, 0}, /* TXS */
 
-    {0x98, "TYA", IMPLI, 2, 0} /* TYA */
+    {0x98, "TYA", IMPLI, 2, 0}, /* TYA */
+
+    {0xCB, "WAI", IMPLI, 3, 0} /* STP (WDC 65c02) */
+
 };
 
 /* This function emits a comment header with information about the file
@@ -307,7 +344,7 @@ static void emit_header(options_t *options, int fsize) {
 static char *append_cycle(char *input, uint8_t entry, uint16_t pc, uint16_t new_pc) {
     char tmpstr[256];
     int cycles = g_opcode_table[entry].cycles;
-    int exceptions = g_opcode_table[entry].cycles_exceptions;
+    int exceptions = g_opcode_table[entry].flags;
     int crosses_page = ((pc & 0xff00u) != (new_pc & 0xff00u)) ? 1 : 0;
 
     // On some exceptional conditions, instruction will take an extra cycle, or even two
