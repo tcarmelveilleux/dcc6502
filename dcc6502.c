@@ -31,7 +31,7 @@
 #include <ctype.h>
 #include <errno.h>
 
-#define VERSION_INFO "v2.0"
+#define VERSION_INFO "v2.1"
 #define NUMBER_OPCODES 151
 
 /* Exceptions for cycle counting */
