@@ -75,6 +75,7 @@ typedef struct options_s {
     int hex_output; /* 1 if hex dump output is desired at beginning of line */
     unsigned long max_num_bytes;
     uint16_t org; /* Origin of addresses */
+    long offset; /* File offset to start disassembly from */
 } options_t;
 
 /* Opcode table */
@@ -613,6 +614,7 @@ static void usage(void) {
     fprintf(stderr, "  -?/-h        : Show this help message\n");
     fprintf(stderr, "  -o ORIGIN    : Set the origin (base address of disassembly) [default: 0x8000]\n");
     fprintf(stderr, "  -m NUM_BYTES : Only disassemble the first NUM_BYTES bytes\n");
+    fprintf(stderr, "  -s NUM_BYTES : Disassemble after skipping NUM_BYTES from start of input file\n");
     fprintf(stderr, "  -d           : Enable hex dump within disassembly\n");
     fprintf(stderr, "  -n           : Enable NES register annotations\n");
     fprintf(stderr, "  -v           : Get only version information\n");
@@ -653,6 +655,7 @@ static void parse_args(int argc, char *argv[], options_t *options) {
     options->nes_mode = 0;
     options->org = 0x8000;
     options->max_num_bytes = 65536;
+    options->offset = 0;
 
     while (arg_idx < argc) {
         /* First non-dash-starting argument is assumed to be filename */
@@ -703,6 +706,17 @@ static void parse_args(int argc, char *argv[], options_t *options) {
                 }
                 options->max_num_bytes = tmp_value;
                 break;
+            case 's':
+                if ((arg_idx == (argc - 1)) || (argv[arg_idx + 1][0] == '-')) {
+                    usage_and_exit(1, "Missing argument to -s switch");
+                }
+                /* Get argument and parse it */
+                arg_idx++;
+                if (!str_arg_to_ulong(argv[arg_idx], &tmp_value)) {
+                    usage_and_exit(1, "Invalid argument to -s switch");
+                }
+                options->offset = (long)tmp_value;
+                break;
             default:
                 version();
                 usage();
@@ -727,6 +741,7 @@ int main(int argc, char *argv[]) {
     FILE *input_file; /* Input file */
     uint16_t pc; /* Program counter */
     options_t options; /* Command-line options parsing results */
+    int result = 0;
 
     parse_args(argc, argv, &options);
 
@@ -742,6 +757,14 @@ int main(int argc, char *argv[]) {
         version();
         fprintf(stderr, "File not found or invalid filename : %s\n", options.filename);
         exit(2);
+    }
+
+    if (options.offset) {
+        result = fseek(input_file, options.offset, SEEK_SET);
+        if (result < 0) {
+            fprintf(stderr, "fseek(%s, %ld, SEEK_SET) failed: %s (%d)\n", options.filename, options.offset, strerror(errno), result);
+            exit(2);
+        }
     }
 
     byte_count = 0;
