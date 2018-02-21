@@ -614,7 +614,7 @@ static void usage(void) {
     fprintf(stderr, "  -?/-h        : Show this help message\n");
     fprintf(stderr, "  -o ORIGIN    : Set the origin (base address of disassembly) [default: 0x8000]\n");
     fprintf(stderr, "  -m NUM_BYTES : Only disassemble the first NUM_BYTES bytes\n");
-    fprintf(stderr, "  -s NUM_BYTES : Disassemble starting from NUM_BYTES input file offset\n");
+    fprintf(stderr, "  -s NUM_BYTES : Disassemble after skipping NUM_BYTES from start of input file\n");
     fprintf(stderr, "  -d           : Enable hex dump within disassembly\n");
     fprintf(stderr, "  -n           : Enable NES register annotations\n");
     fprintf(stderr, "  -v           : Get only version information\n");
@@ -741,7 +741,7 @@ int main(int argc, char *argv[]) {
     FILE *input_file; /* Input file */
     uint16_t pc; /* Program counter */
     options_t options; /* Command-line options parsing results */
-    int r;
+    int result = 0;
 
     parse_args(argc, argv, &options);
 
@@ -760,9 +760,9 @@ int main(int argc, char *argv[]) {
     }
 
     if (options.offset) {
-        r = fseek(input_file, options.offset, SEEK_SET);
-        if (r < 0) {
-            fprintf(stderr, "fseek(%s, %ld, SEEK_SET) failed: %s (%d)\n", options.filename, options.offset, strerror(errno), r);
+        result = fseek(input_file, options.offset, SEEK_SET);
+        if (result < 0) {
+            fprintf(stderr, "fseek(%s, %ld, SEEK_SET) failed: %s (%d)\n", options.filename, options.offset, strerror(errno), result);
             exit(2);
         }
     }
