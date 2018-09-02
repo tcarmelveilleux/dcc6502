@@ -769,8 +769,8 @@ int main(int argc, char *argv[]) {
 
     byte_count = 0;
     while(!feof(input_file) && ((options.org + byte_count) <= 0xFFFFu) && (byte_count < options.max_num_bytes)) {
-        fread(&buffer[options.org + byte_count], 1, 1, input_file);
-        byte_count++;
+        size_t bytes_read = fread(&buffer[options.org + byte_count], 1, 1, input_file);
+        byte_count += bytes_read;
     }
 
     fclose(input_file);
