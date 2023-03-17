@@ -616,7 +616,7 @@ static void disassemble(char *output, uint8_t *buffer, options_t *options, uint1
 
             // Compute displacement from first byte after full instruction.
             word_operand = current_addr + 3;
-            if (byte_operand > 0x7Fu) {
+            if (byte_operand2 > 0x7Fu) {
                 word_operand -= ((~byte_operand2 & 0x7Fu) + 1);
             } else {
                 word_operand += byte_operand2 & 0x7Fu;
