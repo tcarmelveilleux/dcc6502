@@ -32,13 +32,13 @@
 #include <errno.h>
 
 #define VERSION_INFO "v2.1"
-#define NUMBER_OPCODES 151
+#define NUMBER_OPCODES 183
 
 /* Exceptions for cycle counting */
 #define CYCLES_CROSS_PAGE_ADDS_ONE      (1 << 0)
 #define CYCLES_BRANCH_TAKEN_ADDS_ONE    (1 << 1)
 
-/* The 6502's 13 addressing modes */
+/* The 6502's 13 addressing modes  + 1 extra for the 6501 */
 typedef enum {
     IMMED = 0, /* Immediate */
     ABSOL, /* Absolute */
@@ -52,7 +52,8 @@ typedef enum {
     INDIN, /* Indexed indirect (with X) */
     ININD, /* Indirect indexed (with Y) */
     RELAT, /* Relative */
-    ACCUM /* Accumulator */
+    ACCUM, /* Accumulator */
+    ZEROP_RELAT, /* Zeropage, relative (6501 conditional jumps) */
 } addressing_mode_e;
 
 /** Some compilers don't have EOK in errno.h */
@@ -130,6 +131,42 @@ static opcode_t g_opcode_table[NUMBER_OPCODES] = {
     {0xD8, "CLD", IMPLI, 2, 0}, /* CLD */
 
     {0x58, "CLI", IMPLI, 2, 0}, /* CLI */
+
+    {0x07, "RMB0", ZEROP, 5, 0}, /* RMB0 */
+    {0x17, "RMB1", ZEROP, 5, 0}, /* RMB1 */
+    {0x27, "RMB2", ZEROP, 5, 0}, /* RMB2 */
+    {0x37, "RMB3", ZEROP, 5, 0}, /* RMB3 */
+    {0x47, "RMB4", ZEROP, 5, 0}, /* RMB4 */
+    {0x57, "RMB5", ZEROP, 5, 0}, /* RMB5 */
+    {0x67, "RMB6", ZEROP, 5, 0}, /* RMB6 */
+    {0x77, "RMB7", ZEROP, 5, 0}, /* RMB7 */
+
+    {0x87, "SMB0", ZEROP, 5, 0}, /* SMB0 */
+    {0x97, "SMB1", ZEROP, 5, 0}, /* SMB1 */
+    {0xA7, "SMB2", ZEROP, 5, 0}, /* SMB2 */
+    {0xB7, "SMB3", ZEROP, 5, 0}, /* SMB3 */
+    {0xC7, "SMB4", ZEROP, 5, 0}, /* SMB4 */
+    {0xD7, "SMB5", ZEROP, 5, 0}, /* SMB5 */
+    {0xE7, "SMB6", ZEROP, 5, 0}, /* SMB6 */
+    {0xF7, "SMB7", ZEROP, 5, 0}, /* SMB7 */
+
+    {0x0F, "BBR0", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR0 */
+    {0x1F, "BBR1", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR1 */
+    {0x2F, "BBR2", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR2 */
+    {0x3F, "BBR3", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR3 */
+    {0x4F, "BBR4", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR4 */
+    {0x5F, "BBR5", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR5 */
+    {0x6F, "BBR6", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR6 */
+    {0x7F, "BBR7", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBR7 */
+
+    {0x8F, "BBS0", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS0 */
+    {0x9F, "BBS1", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS1 */
+    {0xAF, "BBS2", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS2 */
+    {0xBF, "BBS3", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS3 */
+    {0xCF, "BBS4", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS4 */
+    {0xDF, "BBS5", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS5 */
+    {0xEF, "BBS6", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS6 */
+    {0xFF, "BBS7", ZEROP_RELAT, 5, CYCLES_CROSS_PAGE_ADDS_ONE | CYCLES_BRANCH_TAKEN_ADDS_ONE}, /* BBS7 */
 
     {0xB8, "CLV", IMPLI, 2, 0}, /* CLV */
 
@@ -393,6 +430,7 @@ static void disassemble(char *output, uint8_t *buffer, options_t *options, uint1
     int entry = 0;
     int found = 0;
     uint8_t byte_operand;
+    uint8_t byte_operand2;
     uint16_t word_operand = 0;
     uint16_t current_addr = *pc;
     uint8_t opcode = buffer[current_addr];
@@ -564,6 +602,29 @@ static void disassemble(char *output, uint8_t *buffer, options_t *options, uint1
             sprintf(opcode_repr, "%s $%04X", mnemonic, word_operand);
             if (options->hex_output) {
                 sprintf(hex_dump, "$%04X> %02X %02X:", current_addr, opcode, byte_operand);
+            }
+
+            break;
+        case ZEROP_RELAT:
+            /* Get zero page address */
+            byte_operand = buffer[*pc + 1];
+            *pc += 1;
+
+            /* Get relative modifier */
+            byte_operand2 = buffer[*pc + 1];
+            *pc += 1;
+
+            // Compute displacement from first byte after full instruction.
+            word_operand = current_addr + 3;
+            if (byte_operand2 > 0x7Fu) {
+                word_operand -= ((~byte_operand2 & 0x7Fu) + 1);
+            } else {
+                word_operand += byte_operand2 & 0x7Fu;
+            }
+
+            sprintf(opcode_repr, "%s $%02X,$%04X", mnemonic, byte_operand, word_operand);
+            if (options->hex_output) {
+                sprintf(hex_dump, "$%04X> %02X %02X %02X:", current_addr, opcode, byte_operand, byte_operand2);
             }
 
             break;
